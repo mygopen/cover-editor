@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>社群封面圖片編輯器</title>
+    <!-- Google Fonts: Noto Sans TC (新增 600 字重) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* 自定義樣式 */
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f3f4f6;
+            /* 讓整個網頁的文字邊緣更平滑 (MacOS/iOS 尤其明顯) */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        /* 預覽區域容器比例 1000:563 (56.3%) */
+        .preview-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.3%; /* 563 / 1000 * 100 */
+            background-color: #333;
+            overflow: hidden;
+            border-radius: 8px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            user-select: none; /* 防止拖曳圖片時選取到整個區塊 */
+        }
+
+        .preview-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 背景圖片層 */
+        #preview-bg-layer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform-origin: center center;
+            /* 初始值由 JS 控制 */
+            cursor: move;
+        }
+
+        /* 遮罩層 (中間層) */
+        #preview-mask-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('https://ik.imagekit.io/mygopen/cover.png?updatedAt=1765794389568');
+            background-size: cover;
+            background-position: center;
+            pointer-events: none; /* 讓滑鼠事件穿透到背景圖以便拖曳 */
+            z-index: 10;
+        }
+
+        /* 文字層 (最上層) */
+        #preview-text-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            pointer-events: none; /* 文字層本身不擋住拖曳 */
+            padding: 0 5%; /* 左右留白 */
+            /* padding-bottom 由 JS 動態控制 */
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; /* 文字靠下 */
+            align-items: center;       /* 水平置中 */
+        }
+
+        /* 上標文字 */
+        .top-label {
+            display: block; 
+            width: 100%;    
+            text-align: center !important; 
+            color: white;
+            font-weight: 600; /* 修改為 600 */
+            line-height: 1.3;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            letter-spacing: 0.05em; /* 這裡有字距 */
+            /* transform 由 JS 控制位移 */
+        }
+
+        /* 下標主要文字 */
+        .bottom-label {
+            display: block; 
+            width: 100%;    
+            text-align: center !important; 
+            color: white;
+            font-weight: 800; 
+            line-height: 1.3;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.7);
+            white-space: nowrap; 
+            overflow: visible; 
+        }
+
+        /* 顏色高亮樣式 */
+        .highlight-cyan {
+            color: #23f8b5;
+        }
+        .highlight-yellow {
+            color: #fef337;
+        }
+
+        /* 編輯器 UI 優化 */
+        .control-group {
+            @apply mb-4 p-4 bg-white rounded-lg shadow-sm border border-gray-100;
+        }
+        .control-label {
+            @apply block text-sm font-medium text-gray-700 mb-2;
+        }
+        input[type=range] {
+            @apply w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600;
+        }
+        
+        /* 隱藏的 Canvas 用於輸出 */
+        #export-canvas {
+            display: none;
+        }
+
+        /* 載入中遮罩 */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col md:flex-row">
+
+    <!-- 左側/上方：預覽區 -->
+    <div class="w-full md:w-2/3 p-4 md:p-8 flex flex-col justify-center items-center bg-gray-100 sticky top-0 md:relative z-10">
+        <div class="w-full max-w-5xl">
+            <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                <i class="fa-regular fa-image mr-2"></i> 圖片預覽
+                <span class="text-xs font-normal text-gray-500 ml-2">(可拖曳背景調整位置)</span>
+            </h2>
+            
+            <!-- 預覽框 -->
+            <div class="preview-container" id="preview-container">
+                <div class="preview-content">
+                    <!-- 1. 背景層 -->
+                    <img id="preview-bg-layer" src="" alt="背景預覽" style="display: none;">
+                    
+                    <!-- 2. 遮罩層 -->
+                    <div id="preview-mask-layer"></div>
+                    
+                    <!-- 3. 文字層 -->
+                    <div id="preview-text-layer">
+                        <div id="display-top-label" class="top-label">網傳炊煙裊裊升起，隔江千萬里，周杰倫我愛你</div>
+                        <div id="display-bottom-label" class="bottom-label">好的！天青色等煙雨而我在等你</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 下載按鈕 -->
+            <div class="mt-6 flex justify-center">
+                <button onclick="downloadImage()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transition transform hover:scale-105 flex items-center text-lg">
+                    <i class="fa-solid fa-download mr-2"></i> 下載圖片 (1000x563)
+                </button>
+            </div>
+            <div id="loading-msg" class="hidden mt-2 text-center text-gray-600 flex justify-center items-center gap-2">
+                <div class="loader"></div> 處理中...
+            </div>
+        </div>
+    </div>
+
+    <!-- 右側/下方：控制區 -->
+    <div class="w-full md:w-1/3 bg-white border-l border-gray-200 p-6 overflow-y-auto h-auto md:h-screen custom-scrollbar">
+        <h1 class="text-2xl font-black text-gray-800 mb-6 border-b pb-4">封面編輯器</h1>
+
+        <!-- 1. 背景圖片設定 -->
+        <div class="control-group">
+            <h3 class="font-bold text-gray-800 mb-3 flex items-center">
+                <i class="fa-solid fa-camera mr-2 text-blue-500"></i> 背景設定
+            </h3>
+            
+            <div class="mb-4">
+                <label class="control-label">上傳圖片</label>
+                <input type="file" id="bg-upload" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition"/>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4">
+                <div>
+                    <label class="control-label flex justify-between">
+                        縮放 (Scale) <span id="val-scale" class="text-gray-400">100%</span>
+                    </label>
+                    <input type="range" id="inp-scale" min="10" max="300" value="100">
+                </div>
+                <div>
+                    <label class="control-label flex justify-between">
+                        亮度 <span id="val-brightness" class="text-gray-400">100%</span>
+                    </label>
+                    <input type="range" id="inp-brightness" min="0" max="200" value="100">
+                </div>
+                <div>
+                    <label class="control-label flex justify-between">
+                        飽和度 <span id="val-saturation" class="text-gray-400">100%</span>
+                    </label>
+                    <input type="range" id="inp-saturation" min="0" max="200" value="100">
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 文字編輯 -->
+        <div class="control-group">
+            <h3 class="font-bold text-gray-800 mb-3 flex items-center">
+                <i class="fa-solid fa-font mr-2 text-blue-500"></i> 文字編輯
+            </h3>
+            
+            <!-- 調整滑桿 -->
+            <div class="grid grid-cols-1 gap-4 mb-5 pb-5 border-b border-gray-100">
+                <div>
+                    <label class="control-label flex justify-between">
+                        底部距離 (px) <span id="val-text-y" class="text-gray-400">100px</span>
+                    </label>
+                    <input type="range" id="inp-text-y" min="0" max="300" value="100">
+                </div>
+                <div>
+                    <label class="control-label flex justify-between">
+                        大標題大小 (下) <span id="val-text-size" class="text-gray-400">48px</span>
+                    </label>
+                    <input type="range" id="inp-text-size" min="20" max="80" value="48">
+                </div>
+                <div>
+                    <label class="control-label flex justify-between">
+                        上標題大小 (上) <span id="val-top-text-size" class="text-gray-400">30px</span>
+                    </label>
+                    <input type="range" id="inp-top-text-size" min="12" max="60" value="30">
+                </div>
+            </div>
+
+            <!-- 上標 -->
+            <div class="mb-4">
+                <label class="control-label">上標題 (白色小字)</label>
+                <input type="text" id="inp-top-text" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" value="網傳炊煙裊裊升起，隔江千萬里，周杰倫我愛你" placeholder="輸入上標題...">
+            </div>
+
+            <!-- 下標 -->
+            <div class="mb-2">
+                <label class="control-label">大標題 (僅支援單行，可變色)</label>
+                <!-- 工具列 -->
+                <div class="flex space-x-2 mb-2">
+                    <button onclick="setTextColor('white')" class="w-8 h-8 rounded border border-gray-300 bg-white hover:bg-gray-100 shadow-sm" title="重置為白色"></button>
+                    <button onclick="setTextColor('cyan')" class="w-8 h-8 rounded border border-gray-300 bg-[#23f8b5] hover:opacity-80 shadow-sm" title="標記為青色"></button>
+                    <button onclick="setTextColor('yellow')" class="w-8 h-8 rounded border border-gray-300 bg-[#fef337] hover:opacity-80 shadow-sm" title="標記為黃色"></button>
+                    <div class="text-xs text-gray-500 flex items-center ml-2">← 選取文字後點擊顏色</div>
+                </div>
+                
+                <!-- 可編輯 Div -->
+                <div id="inp-bottom-text" contenteditable="true" class="w-full min-h-[50px] border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-gray-800 text-lg font-bold">
+                    好的！天青色等煙雨而我在等你
+                </div>
+            </div>
+        </div>
+        
+    </div>
+
+    <!-- 隱藏的 Canvas 用於生成最終圖片，尺寸更新為 1000x563 -->
+    <canvas id="export-canvas" width="1000" height="563"></canvas>
+
+    <script>
+        // --- 變數與初始化 ---
+        const previewContainer = document.getElementById('preview-container');
+        const bgImgEl = document.getElementById('preview-bg-layer');
+        const maskImgEl = document.getElementById('preview-mask-layer');
+        const textLayer = document.getElementById('preview-text-layer');
+        const displayTop = document.getElementById('display-top-label');
+        const displayBottom = document.getElementById('display-bottom-label');
+        
+        // 輸入控制項
+        const inpScale = document.getElementById('inp-scale');
+        const inpBright = document.getElementById('inp-brightness');
+        const inpSat = document.getElementById('inp-saturation');
+        
+        const inpTextY = document.getElementById('inp-text-y');
+        const inpTextSize = document.getElementById('inp-text-size');
+        const inpTopTextSize = document.getElementById('inp-top-text-size'); 
+        
+        const inpTopText = document.getElementById('inp-top-text');
+        const inpBottomText = document.getElementById('inp-bottom-text');
+        
+        // 狀態管理
+        let state = {
+            bgSrc: null,
+            scale: 1,
+            brightness: 100,
+            saturation: 100,
+            posX: 0,
+            posY: 0,
+            isDragging: false,
+            startX: 0,
+            startY: 0,
+            textPaddingBottomPx: 100,
+            bottomFontSize: 48,
+            topFontSize: 30
+        };
+
+        // 遮罩圖片 URL
+        const maskUrl = 'https://ik.imagekit.io/mygopen/cover.png?updatedAt=1765794389568';
+        const maskImageObj = new Image();
+        maskImageObj.crossOrigin = "Anonymous";
+        maskImageObj.src = maskUrl;
+
+        // --- 事件監聽 ---
+
+        // 1. 圖片上傳
+        document.getElementById('bg-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    bgImgEl.src = event.target.result;
+                    bgImgEl.style.display = 'block';
+                    // 重置位置
+                    state.bgSrc = event.target.result;
+                    state.posX = 0;
+                    state.posY = 0;
+                    updatePreview();
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // 2. 數值滑桿監聽
+        function updateStateFromInputs() {
+            state.scale = parseInt(inpScale.value) / 100;
+            state.brightness = parseInt(inpBright.value);
+            state.saturation = parseInt(inpSat.value);
+            
+            document.getElementById('val-scale').innerText = inpScale.value + '%';
+            document.getElementById('val-brightness').innerText = inpBright.value + '%';
+            document.getElementById('val-saturation').innerText = inpSat.value + '%';
+            
+            state.textPaddingBottomPx = parseInt(inpTextY.value);
+            state.bottomFontSize = parseInt(inpTextSize.value);
+            state.topFontSize = parseInt(inpTopTextSize.value);
+            
+            document.getElementById('val-text-y').innerText = inpTextY.value + 'px';
+            document.getElementById('val-text-size').innerText = inpTextSize.value + 'px';
+            document.getElementById('val-top-text-size').innerText = inpTopTextSize.value + 'px';
+            
+            updatePreview();
+        }
+
+        [inpScale, inpBright, inpSat, inpTextY, inpTextSize, inpTopTextSize].forEach(el => {
+            el.addEventListener('input', updateStateFromInputs);
+        });
+
+        // 3. 文字輸入同步
+        inpTopText.addEventListener('input', (e) => {
+            displayTop.innerText = e.target.value;
+        });
+
+        // 下標題 ContentEditable 監聽
+        const observer = new MutationObserver((mutations) => {
+            syncBottomText();
+        });
+        observer.observe(inpBottomText, { characterData: true, childList: true, subtree: true, attributes: true });
+        
+        inpBottomText.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+            }
+        });
+
+        // 新增：貼上時只保留純文字
+        inpBottomText.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData).getData('text');
+            document.execCommand('insertText', false, text);
+        });
+        
+        syncBottomText();
+
+        function syncBottomText() {
+            displayBottom.innerHTML = inpBottomText.innerHTML;
+        }
+
+        // 4. 文字變色邏輯
+        window.setTextColor = function(colorType) {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return;
+
+            const range = selection.getRangeAt(0);
+            const container = inpBottomText;
+            if (!container.contains(range.commonAncestorContainer)) return;
+
+            const span = document.createElement('span');
+            if (colorType === 'cyan') {
+                span.className = 'highlight-cyan';
+                span.style.color = '#23f8b5'; 
+            } else if (colorType === 'yellow') {
+                span.className = 'highlight-yellow';
+                span.style.color = '#fef337'; 
+            } else {
+                document.execCommand('removeFormat', false, null);
+                return;
+            }
+
+            if (!selection.isCollapsed) {
+                document.execCommand('removeFormat', false, null);
+                const text = selection.toString();
+                span.innerText = text;
+                range.deleteContents();
+                range.insertNode(span);
+                selection.removeAllRanges();
+            }
+            syncBottomText();
+        };
+
+        // 5. 圖片拖曳
+        previewContainer.addEventListener('mousedown', startDrag);
+        previewContainer.addEventListener('touchstart', startDrag, {passive: false});
+        window.addEventListener('mousemove', drag);
+        window.addEventListener('touchmove', drag, {passive: false});
+        window.addEventListener('mouseup', endDrag);
+        window.addEventListener('touchend', endDrag);
+
+        function startDrag(e) {
+            if (!state.bgSrc) return;
+            e.preventDefault();
+            state.isDragging = true;
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            state.startX = clientX - state.posX;
+            state.startY = clientY - state.posY;
+            previewContainer.style.cursor = 'grabbing';
+        }
+
+        function drag(e) {
+            if (!state.isDragging) return;
+            e.preventDefault();
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            state.posX = clientX - state.startX;
+            state.posY = clientY - state.startY;
+            updatePreview();
+        }
+
+        function endDrag() {
+            state.isDragging = false;
+            previewContainer.style.cursor = 'default';
+        }
+
+        // --- 更新預覽 ---
+        function updatePreview() {
+            if (bgImgEl.src) {
+                bgImgEl.style.transform = `translate(calc(-50% + ${state.posX}px), calc(-50% + ${state.posY}px)) scale(${state.scale})`;
+                bgImgEl.style.filter = `brightness(${state.brightness}%) saturate(${state.saturation}%)`;
+            }
+
+            const paddingPct = (state.textPaddingBottomPx / 1000) * 100;
+            textLayer.style.paddingBottom = `${paddingPct}%`;
+            
+            const containerWidth = previewContainer.clientWidth;
+            const scaleRatio = containerWidth ? (containerWidth / 1000) : 1;
+            
+            const scaledBottomSize = state.bottomFontSize * scaleRatio;
+            displayBottom.style.fontSize = `${scaledBottomSize}px`;
+            
+            const scaledTopSize = state.topFontSize * scaleRatio;
+            displayTop.style.fontSize = `${scaledTopSize}px`;
+
+            // 設定預覽區的上標與下標間距 (固定 5px 的比例)
+            const scaledMargin = 5 * scaleRatio;
+            displayTop.style.marginBottom = `${scaledMargin}px`;
+            
+            // 上標下移 5px (預覽用 transform)
+            const moveDownPx = 5 * scaleRatio;
+            displayTop.style.transform = `translateY(${moveDownPx}px)`;
+        }
+        
+        window.addEventListener('resize', updatePreview);
+
+        // --- Canvas 輸出 ---
+        async function downloadImage() {
+            const canvas = document.getElementById('export-canvas');
+            const ctx = canvas.getContext('2d'); 
+            const loadingMsg = document.getElementById('loading-msg');
+            
+            loadingMsg.classList.remove('hidden');
+
+            // --- 新增：平滑處理設定 ---
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+
+            try {
+                await Promise.all([
+                    document.fonts.load(`600 ${state.topFontSize}px "Noto Sans TC"`), // 改為 600
+                    document.fonts.load(`800 ${state.bottomFontSize}px "Noto Sans TC"`)
+                ]);
+            } catch (e) {
+                console.log("Font loading failed, relying on system fallback", e);
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (state.bgSrc) {
+                const img = new Image();
+                img.src = state.bgSrc;
+                await new Promise(r => img.onload = r);
+
+                ctx.save();
+                ctx.filter = `brightness(${state.brightness}%) saturate(${state.saturation}%)`;
+                const cx = canvas.width / 2;
+                const cy = canvas.height / 2;
+                const scaleFactor = canvas.width / previewContainer.clientWidth;
+                ctx.translate(cx + state.posX * scaleFactor, cy + state.posY * scaleFactor); 
+                ctx.scale(state.scale, state.scale);
+                ctx.drawImage(img, -img.width / 2, -img.height / 2);
+                ctx.restore();
+            }
+
+            if (maskImageObj.complete) {
+                ctx.drawImage(maskImageObj, 0, 0, canvas.width, canvas.height);
+            } else {
+                await new Promise(r => maskImageObj.onload = r);
+                ctx.drawImage(maskImageObj, 0, 0, canvas.width, canvas.height);
+            }
+
+            drawTextOnCanvas(ctx);
+
+            const link = document.createElement('a');
+            link.download = 'social-cover-' + Date.now() + '.jpg';
+            link.href = canvas.toDataURL('image/jpeg', 0.9);
+            link.click();
+            
+            loadingMsg.classList.add('hidden');
+        }
+
+        function drawTextOnCanvas(ctx) {
+            const canvas = ctx.canvas;
+            
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0); 
+            ctx.textAlign = 'start'; 
+            ctx.textBaseline = 'alphabetic';
+            
+            const paddingBottom = state.textPaddingBottomPx;
+            const bottomFontSize = state.bottomFontSize;
+            const topFontSize = state.topFontSize;
+            const gap = 5; 
+            
+            // --- 下標 (Bottom Label) ---
+            ctx.font = `800 ${bottomFontSize}px "Noto Sans TC", sans-serif`;
+            
+            // 1. 獲取清理過的節點 (去除前後空白)
+            const bottomTextNodes = parseContentEditable(inpBottomText);
+            
+            let currentY = canvas.height - paddingBottom;
+            const bottomStartY = currentY - (bottomFontSize * 0.3);
+            
+            // 2. 計算總寬度
+            let totalLineWidth = 0;
+            bottomTextNodes.forEach(node => {
+                 totalLineWidth += ctx.measureText(node.text).width;
+            });
+            
+            // 3. 計算起始 X (置中)
+            // 使用 Math.round 避免亞像素模糊
+            let cursorX = Math.round((canvas.width - totalLineWidth) / 2);
+            
+            // 4. 繪製
+            bottomTextNodes.forEach(node => {
+                ctx.fillStyle = node.color;
+                ctx.shadowColor = 'rgba(0,0,0,0.7)';
+                ctx.shadowBlur = 10;
+                ctx.shadowOffsetY = 2;
+                ctx.font = `800 ${bottomFontSize}px "Noto Sans TC", sans-serif`;
+                ctx.textAlign = 'left'; 
+                
+                ctx.fillText(node.text, cursorX, bottomStartY);
+                cursorX += ctx.measureText(node.text).width;
+            });
+
+            // --- 上標 (Top Label) ---
+            const topText = inpTopText.value.trim();
+            const visualGap = 5 + (bottomFontSize * 0.15) + (topFontSize * 0.15);
+            // +5 讓上標下移 5px
+            const topTextY = bottomStartY - (bottomFontSize * 0.85) - visualGap + 5;
+            
+            // 更改為字重 600
+            ctx.font = `600 ${topFontSize}px "Noto Sans TC", sans-serif`;
+            ctx.fillStyle = 'white';
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetY = 2;
+            
+            if (ctx.letterSpacing !== undefined) {
+                ctx.letterSpacing = "0.05em"; 
+            }
+            
+            // 原生置中，座標鎖死 500
+            ctx.textAlign = 'center'; 
+            ctx.fillText(topText, 500, topTextY);
+            
+            ctx.restore();
+        }
+
+        // 解析並清理 ContentEditable 內容
+        function parseContentEditable(element) {
+            let nodes = [];
+            
+            function traverse(node, style = { color: 'white' }) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    let cleanText = node.textContent.replace(/\n/g, ' '); 
+                    if (cleanText.length > 0) {
+                        nodes.push({ text: cleanText, color: style.color });
+                    }
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
+                    let newStyle = { ...style };
+                    if (node.style.color) newStyle.color = node.style.color;
+                    if (node.classList.contains('highlight-cyan')) newStyle.color = '#23f8b5';
+                    if (node.classList.contains('highlight-yellow')) newStyle.color = '#fef337';
+                    
+                    node.childNodes.forEach(child => traverse(child, newStyle));
+                }
+            }
+            
+            element.childNodes.forEach(node => traverse(node));
+            
+            if (nodes.length > 0) {
+                nodes[0].text = nodes[0].text.trimStart();
+            }
+            if (nodes.length > 0) {
+                const lastIdx = nodes.length - 1;
+                nodes[lastIdx].text = nodes[lastIdx].text.trimEnd();
+            }
+            
+            return nodes.filter(n => n.text.length > 0);
+        }
+        
+        setTimeout(updatePreview, 100);
+        
+    </script>
+</body>
+</html>
