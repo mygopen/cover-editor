@@ -516,6 +516,8 @@
         maskImageObj.crossOrigin = "Anonymous";
         maskImageObj.src = maskUrl;
         bgImgEl.addEventListener('load', updatePreview);
+        const OUTPUT_WIDTH = 1000;
+        const OUTPUT_HEIGHT = 563;
 
         // --- 事件監聽 ---
 
@@ -573,9 +575,11 @@
         });
 
         [inpMosaicCellSize, inpMosaicDialogSlider].forEach(el => {
-            el.addEventListener('input', (e) => {
-                syncMosaicCellSize(e.target.value);
-                renderMosaicPreview();
+            ['input', 'change'].forEach(eventName => {
+                el.addEventListener(eventName, (e) => {
+                    syncMosaicCellSize(e.target.value);
+                    renderMosaicPreview();
+                });
             });
         });
 
@@ -585,7 +589,7 @@
             if (!state.bgSrc) return;
             state.isMosaicSelectionMode = true;
             state.pendingMosaicBox = null;
-            previewContainer.style.cursor = 'crosshair';
+            previewContainer.style.cursor = 'default';
             hideMosaicDialog();
             updatePreview();
         });
@@ -737,7 +741,7 @@
             const didSelectMosaic = state.isSelectingMosaic;
             state.isDragging = false;
             state.isSelectingMosaic = false;
-            previewContainer.style.cursor = state.isMosaicSelectionMode ? 'crosshair' : 'default';
+            previewContainer.style.cursor = 'default';
             updatePreview();
             if (didSelectMosaic && state.pendingMosaicBox) {
                 showMosaicDialog();
@@ -748,8 +752,8 @@
         function getCanvasPoint(clientX, clientY) {
             const rect = previewContainer.getBoundingClientRect();
             return {
-                x: Math.max(0, Math.min(999, Math.round(((clientX - rect.left) / rect.width) * 1000))),
-                y: Math.max(0, Math.min(562, Math.round(((clientY - rect.top) / rect.height) * 563)))
+                x: Math.max(0, Math.min(OUTPUT_WIDTH - 1, Math.round(((clientX - rect.left) / rect.width) * OUTPUT_WIDTH))),
+                y: Math.max(0, Math.min(OUTPUT_HEIGHT - 1, Math.round(((clientY - rect.top) / rect.height) * OUTPUT_HEIGHT)))
             };
         }
 
@@ -758,6 +762,7 @@
             if (bgImgEl.src) {
                 bgImgEl.style.transform = `translate(calc(-50% + ${state.posX}px), calc(-50% + ${state.posY}px)) scale(${state.scale})`;
                 bgImgEl.style.filter = `brightness(${state.brightness}%) saturate(${state.saturation}%)`;
+                bgImgEl.style.cursor = state.isMosaicSelectionMode ? 'default' : 'move';
             }
 
             const paddingPct = (state.textPaddingBottomPx / 1000) * 100;
@@ -786,10 +791,10 @@
         }
 
         function clampMosaicBox(box) {
-            const x = Math.max(0, Math.min(999, Math.round(box.x)));
-            const y = Math.max(0, Math.min(562, Math.round(box.y)));
-            const width = Math.max(1, Math.min(1000 - x, Math.round(box.width)));
-            const height = Math.max(1, Math.min(563 - y, Math.round(box.height)));
+            const x = Math.max(0, Math.min(OUTPUT_WIDTH - 1, Math.round(box.x)));
+            const y = Math.max(0, Math.min(OUTPUT_HEIGHT - 1, Math.round(box.y)));
+            const width = Math.max(1, Math.min(OUTPUT_WIDTH - x, Math.round(box.width)));
+            const height = Math.max(1, Math.min(OUTPUT_HEIGHT - y, Math.round(box.height)));
 
             return { x, y, width, height };
         }
@@ -802,8 +807,8 @@
             }
 
             const rect = previewContainer.getBoundingClientRect();
-            const scaleX = rect.width / 1000;
-            const scaleY = rect.height / 563;
+            const scaleX = rect.width / OUTPUT_WIDTH;
+            const scaleY = rect.height / OUTPUT_HEIGHT;
 
             mosaicSelectionBox.style.display = 'block';
             mosaicSelectionBox.style.left = `${box.x * scaleX}px`;
@@ -832,8 +837,8 @@
 
         function clearPreviewMosaic() {
             const ctx = previewMosaicCanvas.getContext('2d');
-            const canvasWidth = 1000;
-            const canvasHeight = 563;
+            const canvasWidth = OUTPUT_WIDTH;
+            const canvasHeight = OUTPUT_HEIGHT;
 
             if (previewMosaicCanvas.width !== canvasWidth || previewMosaicCanvas.height !== canvasHeight) {
                 previewMosaicCanvas.width = canvasWidth;
@@ -885,6 +890,9 @@
             state.mosaicIntensity = nextValue;
             inpMosaicCellSize.value = nextValue;
             inpMosaicDialogSlider.value = nextValue;
+            if (state.pendingMosaicBox && inpMosaicPreview.checked) {
+                requestAnimationFrame(renderMosaicPreview);
+            }
         }
 
         function showMosaicDialog() {
@@ -1020,22 +1028,46 @@
         }
 
         function drawBackgroundOnCanvas(ctx, img) {
-            const canvas = ctx.canvas;
-            const rect = previewContainer.getBoundingClientRect();
-            const scaleX = rect.width ? canvas.width / rect.width : 1;
-            const scaleY = rect.height ? canvas.height / rect.height : scaleX;
+            const placement = getImagePlacementOnCanvas(ctx.canvas, img);
 
             ctx.save();
             ctx.filter = `brightness(${state.brightness}%) saturate(${state.saturation}%)`;
-            ctx.translate(
-                canvas.width / 2 + state.posX * scaleX,
-                canvas.height / 2 + state.posY * scaleY
+            ctx.translate(placement.centerX, placement.centerY);
+            ctx.scale(placement.scale, placement.scale);
+            ctx.drawImage(
+                img,
+                -placement.imageWidth / 2,
+                -placement.imageHeight / 2,
+                placement.imageWidth,
+                placement.imageHeight
             );
-            ctx.scale(state.scale, state.scale);
+            ctx.restore();
+        }
+
+        function getPreviewToOutputScale() {
+            const rect = previewContainer.getBoundingClientRect();
+            return {
+                x: rect.width ? OUTPUT_WIDTH / rect.width : 1,
+                y: rect.height ? OUTPUT_HEIGHT / rect.height : 1
+            };
+        }
+
+        function getImagePlacementOnCanvas(canvas, img) {
             const imageWidth = img.naturalWidth || img.width;
             const imageHeight = img.naturalHeight || img.height;
-            ctx.drawImage(img, -imageWidth / 2, -imageHeight / 2, imageWidth, imageHeight);
-            ctx.restore();
+            const previewToOutput = getPreviewToOutputScale();
+            const outputToCanvas = {
+                x: canvas.width / OUTPUT_WIDTH,
+                y: canvas.height / OUTPUT_HEIGHT
+            };
+
+            return {
+                imageWidth,
+                imageHeight,
+                scale: state.scale,
+                centerX: (OUTPUT_WIDTH / 2 + state.posX * previewToOutput.x) * outputToCanvas.x,
+                centerY: (OUTPUT_HEIGHT / 2 + state.posY * previewToOutput.y) * outputToCanvas.y
+            };
         }
 
         async function saveMosaicToBaseImage(outputBox) {
@@ -1068,11 +1100,9 @@
         }
 
         function mapOutputBoxToImageBox(outputBox, imageWidth, imageHeight) {
-            const rect = previewContainer.getBoundingClientRect();
-            const scaleX = rect.width ? 1000 / rect.width : 1;
-            const scaleY = rect.height ? 563 / rect.height : scaleX;
-            const imageCenterX = 500 + state.posX * scaleX;
-            const imageCenterY = 281.5 + state.posY * scaleY;
+            const previewToOutput = getPreviewToOutputScale();
+            const imageCenterX = OUTPUT_WIDTH / 2 + state.posX * previewToOutput.x;
+            const imageCenterY = OUTPUT_HEIGHT / 2 + state.posY * previewToOutput.y;
             const imageLeft = imageCenterX - (imageWidth * state.scale) / 2;
             const imageTop = imageCenterY - (imageHeight * state.scale) / 2;
 
@@ -1087,12 +1117,16 @@
             const sourceY = Math.floor((outputTop - imageTop) / state.scale);
             const sourceRight = Math.ceil((outputRight - imageLeft) / state.scale);
             const sourceBottom = Math.ceil((outputBottom - imageTop) / state.scale);
+            const clampedX = Math.max(0, Math.min(imageWidth - 1, sourceX));
+            const clampedY = Math.max(0, Math.min(imageHeight - 1, sourceY));
+            const clampedRight = Math.max(clampedX + 1, Math.min(imageWidth, sourceRight));
+            const clampedBottom = Math.max(clampedY + 1, Math.min(imageHeight, sourceBottom));
 
             return {
-                x: Math.max(0, Math.min(imageWidth - 1, sourceX)),
-                y: Math.max(0, Math.min(imageHeight - 1, sourceY)),
-                width: Math.max(1, Math.min(imageWidth - sourceX, sourceRight - sourceX)),
-                height: Math.max(1, Math.min(imageHeight - sourceY, sourceBottom - sourceY))
+                x: clampedX,
+                y: clampedY,
+                width: clampedRight - clampedX,
+                height: clampedBottom - clampedY
             };
         }
 
