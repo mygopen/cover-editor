@@ -574,13 +574,20 @@
             el.addEventListener('input', updateStateFromInputs);
         });
 
-        [inpMosaicCellSize, inpMosaicDialogSlider].forEach(el => {
-            ['input', 'change'].forEach(eventName => {
-                el.addEventListener(eventName, (e) => {
-                    syncMosaicCellSize(e.target.value);
-                    renderMosaicPreview();
-                });
-            });
+        inpMosaicCellSize.addEventListener('input', () => {
+            setMosaicCellSize(inpMosaicCellSize.value, { source: 'number' });
+        });
+        inpMosaicCellSize.addEventListener('change', () => {
+            setMosaicCellSize(inpMosaicCellSize.value, { source: 'number', commit: true });
+        });
+        inpMosaicCellSize.addEventListener('blur', () => {
+            setMosaicCellSize(inpMosaicCellSize.value, { source: 'number', commit: true });
+        });
+        inpMosaicDialogSlider.addEventListener('input', () => {
+            setMosaicCellSize(inpMosaicDialogSlider.value, { source: 'slider', commit: true });
+        });
+        inpMosaicDialogSlider.addEventListener('change', () => {
+            setMosaicCellSize(inpMosaicDialogSlider.value, { source: 'slider', commit: true });
         });
 
         inpMosaicPreview.addEventListener('change', renderMosaicPreview);
@@ -596,6 +603,7 @@
 
         btnMosaicOk.addEventListener('click', async () => {
             if (!state.pendingMosaicBox) return;
+            setMosaicCellSize(inpMosaicCellSize.value, { source: 'number', commit: true });
             btnMosaicOk.disabled = true;
             const saved = await saveMosaicToBaseImage(state.pendingMosaicBox);
             state.savedMosaicBox = saved ? state.pendingMosaicBox : null;
@@ -885,18 +893,39 @@
             );
         }
 
-        function syncMosaicCellSize(value) {
-            const nextValue = Math.max(2, Math.min(80, parseInt(value) || 12));
+        function setMosaicCellSize(value, options = {}) {
+            const rawValue = String(value).trim();
+            const parsedValue = parseInt(rawValue, 10);
+            if (!Number.isFinite(parsedValue)) {
+                if (options.commit) {
+                    syncMosaicCellSizeInputs(state.mosaicIntensity);
+                }
+                return;
+            }
+
+            const nextValue = Math.max(2, Math.min(80, parsedValue));
             state.mosaicIntensity = nextValue;
-            inpMosaicCellSize.value = nextValue;
-            inpMosaicDialogSlider.value = nextValue;
+            syncMosaicCellSizeInputs(nextValue, options.source);
+            queueMosaicPreviewRender();
+        }
+
+        function syncMosaicCellSizeInputs(value, source) {
+            if (source !== 'number' || document.activeElement !== inpMosaicCellSize) {
+                inpMosaicCellSize.value = value;
+            }
+            if (source !== 'slider') {
+                inpMosaicDialogSlider.value = value;
+            }
+        }
+
+        function queueMosaicPreviewRender() {
             if (state.pendingMosaicBox && inpMosaicPreview.checked) {
                 requestAnimationFrame(renderMosaicPreview);
             }
         }
 
         function showMosaicDialog() {
-            syncMosaicCellSize(state.mosaicIntensity);
+            syncMosaicCellSizeInputs(state.mosaicIntensity);
             inpMosaicPreview.checked = true;
             mosaicDialog.classList.remove('hidden');
         }
