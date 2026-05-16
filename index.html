@@ -877,7 +877,7 @@
             sourceCanvas.height = imageHeight;
             const sourceCtx = sourceCanvas.getContext('2d');
             sourceCtx.drawImage(bgImgEl, 0, 0, imageWidth, imageHeight);
-            applyMosaic(sourceCanvas, imageBox.x, imageBox.y, imageBox.width, imageBox.height, state.mosaicIntensity);
+            applyMosaic(sourceCanvas, imageBox.x, imageBox.y, imageBox.width, imageBox.height, getSourceMosaicCellSize());
 
             const previewCtx = previewMosaicCanvas.getContext('2d');
             const workingCanvas = document.createElement('canvas');
@@ -911,15 +911,15 @@
 
             const nextValue = Math.max(2, Math.min(80, parsedValue));
             state.mosaicIntensity = nextValue;
-            syncMosaicCellSizeInputs(nextValue, options.source);
+            syncMosaicCellSizeInputs(nextValue, options);
             queueMosaicPreviewRender();
         }
 
-        function syncMosaicCellSizeInputs(value, source) {
-            if (source !== 'number' || document.activeElement !== inpMosaicCellSize) {
+        function syncMosaicCellSizeInputs(value, options = {}) {
+            if (options.source !== 'number' || options.commit || document.activeElement !== inpMosaicCellSize) {
                 inpMosaicCellSize.value = value;
             }
-            if (source !== 'slider') {
+            if (options.source !== 'slider') {
                 inpMosaicDialogSlider.value = value;
             }
         }
@@ -1127,7 +1127,7 @@
             canvas.height = imageHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, imageWidth, imageHeight);
-            applyMosaic(canvas, imageBox.x, imageBox.y, imageBox.width, imageBox.height, state.mosaicIntensity);
+            applyMosaic(canvas, imageBox.x, imageBox.y, imageBox.width, imageBox.height, getSourceMosaicCellSize());
 
             state.bgSrc = canvas.toDataURL('image/png');
             bgImgEl.src = state.bgSrc;
@@ -1163,6 +1163,10 @@
                 width: clampedRight - clampedX,
                 height: clampedBottom - clampedY
             };
+        }
+
+        function getSourceMosaicCellSize() {
+            return Math.max(1, Math.round(state.mosaicIntensity / Math.max(state.scale, 0.01)));
         }
 
         function applyMosaic(image, startX, startY, width, height, mosaicIntensity) {
