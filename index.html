@@ -67,6 +67,32 @@
             z-index: 10;
         }
 
+        #preview-mosaic-layer,
+        #mosaic-selection-layer {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        #preview-mosaic-layer {
+            z-index: 5;
+        }
+
+        #mosaic-selection-layer {
+            z-index: 30;
+        }
+
+        #mosaic-selection-box {
+            position: absolute;
+            display: none;
+            border: 2px dashed rgba(59, 130, 246, 0.95);
+            background: rgba(59, 130, 246, 0.12);
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7) inset;
+            border-radius: 4px;
+        }
+
         /* 文字層 (最上層) */
         #preview-text-layer {
             position: absolute;
@@ -164,6 +190,7 @@
                 <div class="preview-content">
                     <!-- 1. 背景層 -->
                     <img id="preview-bg-layer" src="" alt="背景預覽" style="display: none;">
+                    <canvas id="preview-mosaic-layer"></canvas>
                     
                     <!-- 2. 遮罩層 -->
                     <div id="preview-mask-layer"></div>
@@ -172,6 +199,10 @@
                     <div id="preview-text-layer">
                         <div id="display-top-label" class="top-label">網傳炊煙裊裊升起，隔江千萬里，周杰倫我愛你</div>
                         <div id="display-bottom-label" class="bottom-label">好的！天青色等煙雨而我在等你</div>
+                    </div>
+
+                    <div id="mosaic-selection-layer">
+                        <div id="mosaic-selection-box"></div>
                     </div>
                 </div>
             </div>
@@ -221,6 +252,44 @@
                         飽和度 <span id="val-saturation" class="text-gray-400">100%</span>
                     </label>
                     <input type="range" id="inp-saturation" min="0" max="200" value="100">
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3 class="font-bold text-gray-800 mb-3 flex items-center">
+                <i class="fa-solid fa-table-cells-large mr-2 text-blue-500"></i> 馬賽克區域
+            </h3>
+
+            <label class="flex items-center gap-2 text-sm font-medium text-gray-700 mb-4">
+                <input type="checkbox" id="inp-mosaic-enabled" class="w-4 h-4 accent-blue-600">
+                啟用馬賽克
+            </label>
+
+            <div class="grid grid-cols-1 gap-4">
+                <div>
+                    <label class="control-label flex justify-between">
+                        強度 <span id="val-mosaic-intensity" class="text-gray-400">12px</span>
+                    </label>
+                    <input type="range" id="inp-mosaic-intensity" min="2" max="80" value="12">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="control-label">X</label>
+                        <input type="number" id="inp-mosaic-x" min="0" max="1000" value="350" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="control-label">Y</label>
+                        <input type="number" id="inp-mosaic-y" min="0" max="563" value="180" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="control-label">寬</label>
+                        <input type="number" id="inp-mosaic-width" min="1" max="1000" value="300" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="control-label">高</label>
+                        <input type="number" id="inp-mosaic-height" min="1" max="563" value="160" class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
                 </div>
             </div>
         </div>
@@ -290,11 +359,19 @@
         const textLayer = document.getElementById('preview-text-layer');
         const displayTop = document.getElementById('display-top-label');
         const displayBottom = document.getElementById('display-bottom-label');
+        const previewMosaicCanvas = document.getElementById('preview-mosaic-layer');
+        const mosaicSelectionBox = document.getElementById('mosaic-selection-box');
         
         // 輸入控制項
         const inpScale = document.getElementById('inp-scale');
         const inpBright = document.getElementById('inp-brightness');
         const inpSat = document.getElementById('inp-saturation');
+        const inpMosaicEnabled = document.getElementById('inp-mosaic-enabled');
+        const inpMosaicIntensity = document.getElementById('inp-mosaic-intensity');
+        const inpMosaicX = document.getElementById('inp-mosaic-x');
+        const inpMosaicY = document.getElementById('inp-mosaic-y');
+        const inpMosaicWidth = document.getElementById('inp-mosaic-width');
+        const inpMosaicHeight = document.getElementById('inp-mosaic-height');
         
         const inpTextY = document.getElementById('inp-text-y');
         const inpTextSize = document.getElementById('inp-text-size');
@@ -312,11 +389,22 @@
             posX: 0,
             posY: 0,
             isDragging: false,
+            isSelectingMosaic: false,
             startX: 0,
             startY: 0,
+            mosaicStartX: 0,
+            mosaicStartY: 0,
             textPaddingBottomPx: 100,
             bottomFontSize: 48,
-            topFontSize: 30
+            topFontSize: 30,
+            mosaicEnabled: false,
+            mosaicIntensity: 12,
+            mosaicBox: {
+                x: 350,
+                y: 180,
+                width: 300,
+                height: 160
+            }
         };
 
         // 遮罩圖片 URL
@@ -324,6 +412,7 @@
         const maskImageObj = new Image();
         maskImageObj.crossOrigin = "Anonymous";
         maskImageObj.src = maskUrl;
+        bgImgEl.addEventListener('load', updatePreview);
 
         // --- 事件監聽 ---
 
@@ -350,10 +439,23 @@
             state.scale = parseInt(inpScale.value) / 100;
             state.brightness = parseInt(inpBright.value);
             state.saturation = parseInt(inpSat.value);
+            state.mosaicEnabled = inpMosaicEnabled.checked;
+            state.mosaicIntensity = parseInt(inpMosaicIntensity.value);
+            state.mosaicBox = clampMosaicBox({
+                x: parseInt(inpMosaicX.value) || 0,
+                y: parseInt(inpMosaicY.value) || 0,
+                width: parseInt(inpMosaicWidth.value) || 1,
+                height: parseInt(inpMosaicHeight.value) || 1
+            });
             
             document.getElementById('val-scale').innerText = inpScale.value + '%';
             document.getElementById('val-brightness').innerText = inpBright.value + '%';
             document.getElementById('val-saturation').innerText = inpSat.value + '%';
+            document.getElementById('val-mosaic-intensity').innerText = state.mosaicIntensity + 'px';
+            inpMosaicX.value = state.mosaicBox.x;
+            inpMosaicY.value = state.mosaicBox.y;
+            inpMosaicWidth.value = state.mosaicBox.width;
+            inpMosaicHeight.value = state.mosaicBox.height;
             
             state.textPaddingBottomPx = parseInt(inpTextY.value);
             state.bottomFontSize = parseInt(inpTextSize.value);
@@ -366,7 +468,20 @@
             updatePreview();
         }
 
-        [inpScale, inpBright, inpSat, inpTextY, inpTextSize, inpTopTextSize].forEach(el => {
+        [
+            inpScale,
+            inpBright,
+            inpSat,
+            inpMosaicEnabled,
+            inpMosaicIntensity,
+            inpMosaicX,
+            inpMosaicY,
+            inpMosaicWidth,
+            inpMosaicHeight,
+            inpTextY,
+            inpTextSize,
+            inpTopTextSize
+        ].forEach(el => {
             el.addEventListener('input', updateStateFromInputs);
         });
 
@@ -443,19 +558,46 @@
         function startDrag(e) {
             if (!state.bgSrc) return;
             e.preventDefault();
-            state.isDragging = true;
             const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
             const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+
+            if (state.mosaicEnabled) {
+                const point = getCanvasPoint(clientX, clientY);
+                const box = clampMosaicBox({ x: point.x, y: point.y, width: 1, height: 1 });
+                state.isSelectingMosaic = true;
+                state.mosaicStartX = box.x;
+                state.mosaicStartY = box.y;
+                state.mosaicBox = box;
+                syncMosaicInputs();
+                updatePreview();
+                return;
+            }
+
+            state.isDragging = true;
             state.startX = clientX - state.posX;
             state.startY = clientY - state.posY;
             previewContainer.style.cursor = 'grabbing';
         }
 
         function drag(e) {
-            if (!state.isDragging) return;
+            if (!state.isDragging && !state.isSelectingMosaic) return;
             e.preventDefault();
             const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
             const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+
+            if (state.isSelectingMosaic) {
+                const point = getCanvasPoint(clientX, clientY);
+                const x = Math.min(state.mosaicStartX, point.x);
+                const y = Math.min(state.mosaicStartY, point.y);
+                const width = Math.abs(point.x - state.mosaicStartX) || 1;
+                const height = Math.abs(point.y - state.mosaicStartY) || 1;
+
+                state.mosaicBox = clampMosaicBox({ x, y, width, height });
+                syncMosaicInputs();
+                updatePreview();
+                return;
+            }
+
             state.posX = clientX - state.startX;
             state.posY = clientY - state.startY;
             updatePreview();
@@ -463,7 +605,16 @@
 
         function endDrag() {
             state.isDragging = false;
+            state.isSelectingMosaic = false;
             previewContainer.style.cursor = 'default';
+        }
+
+        function getCanvasPoint(clientX, clientY) {
+            const rect = previewContainer.getBoundingClientRect();
+            return {
+                x: Math.max(0, Math.min(1000, Math.round(((clientX - rect.left) / rect.width) * 1000))),
+                y: Math.max(0, Math.min(563, Math.round(((clientY - rect.top) / rect.height) * 563)))
+            };
         }
 
         // --- 更新預覽 ---
@@ -492,6 +643,84 @@
             // 上標下移 5px (預覽用 transform)
             const moveDownPx = 5 * scaleRatio;
             displayTop.style.transform = `translateY(${moveDownPx}px)`;
+
+            renderPreviewMosaic();
+            updateMosaicSelectionBox();
+        }
+
+        function clampMosaicBox(box) {
+            const x = Math.max(0, Math.min(999, Math.round(box.x)));
+            const y = Math.max(0, Math.min(562, Math.round(box.y)));
+            const width = Math.max(1, Math.min(1000 - x, Math.round(box.width)));
+            const height = Math.max(1, Math.min(563 - y, Math.round(box.height)));
+
+            return { x, y, width, height };
+        }
+
+        function syncMosaicInputs() {
+            inpMosaicX.value = state.mosaicBox.x;
+            inpMosaicY.value = state.mosaicBox.y;
+            inpMosaicWidth.value = state.mosaicBox.width;
+            inpMosaicHeight.value = state.mosaicBox.height;
+        }
+
+        function updateMosaicSelectionBox() {
+            if (!state.mosaicEnabled) {
+                mosaicSelectionBox.style.display = 'none';
+                return;
+            }
+
+            const rect = previewContainer.getBoundingClientRect();
+            const scaleX = rect.width / 1000;
+            const scaleY = rect.height / 563;
+
+            mosaicSelectionBox.style.display = 'block';
+            mosaicSelectionBox.style.left = `${state.mosaicBox.x * scaleX}px`;
+            mosaicSelectionBox.style.top = `${state.mosaicBox.y * scaleY}px`;
+            mosaicSelectionBox.style.width = `${state.mosaicBox.width * scaleX}px`;
+            mosaicSelectionBox.style.height = `${state.mosaicBox.height * scaleY}px`;
+        }
+
+        function renderPreviewMosaic() {
+            const rect = previewContainer.getBoundingClientRect();
+            const ctx = previewMosaicCanvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const canvasWidth = Math.round(rect.width * dpr);
+            const canvasHeight = Math.round(rect.height * dpr);
+
+            if (previewMosaicCanvas.width !== canvasWidth || previewMosaicCanvas.height !== canvasHeight) {
+                previewMosaicCanvas.width = canvasWidth;
+                previewMosaicCanvas.height = canvasHeight;
+            }
+
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, previewMosaicCanvas.width, previewMosaicCanvas.height);
+
+            if (!state.bgSrc || !state.mosaicEnabled || !bgImgEl.complete || !rect.width || !rect.height) return;
+
+            const workingCanvas = document.createElement('canvas');
+            workingCanvas.width = canvasWidth;
+            workingCanvas.height = canvasHeight;
+            const workingCtx = workingCanvas.getContext('2d');
+
+            workingCtx.save();
+            workingCtx.filter = `brightness(${state.brightness}%) saturate(${state.saturation}%)`;
+            workingCtx.translate(canvasWidth / 2 + state.posX * dpr, canvasHeight / 2 + state.posY * dpr);
+            workingCtx.scale(state.scale * dpr, state.scale * dpr);
+            workingCtx.drawImage(bgImgEl, -bgImgEl.naturalWidth / 2, -bgImgEl.naturalHeight / 2);
+            workingCtx.restore();
+
+            const scaleX = canvasWidth / 1000;
+            const scaleY = canvasHeight / 563;
+            const box = {
+                x: Math.round(state.mosaicBox.x * scaleX),
+                y: Math.round(state.mosaicBox.y * scaleY),
+                width: Math.round(state.mosaicBox.width * scaleX),
+                height: Math.round(state.mosaicBox.height * scaleY)
+            };
+
+            applyMosaic(workingCanvas, box.x, box.y, box.width, box.height, state.mosaicIntensity * scaleX);
+            ctx.drawImage(workingCanvas, box.x, box.y, box.width, box.height, box.x, box.y, box.width, box.height);
         }
         
         window.addEventListener('resize', updatePreview);
@@ -535,6 +764,17 @@
                 ctx.scale(state.scale, state.scale);
                 ctx.drawImage(img, -img.width / 2, -img.height / 2);
                 ctx.restore();
+
+                if (state.mosaicEnabled) {
+                    applyMosaic(
+                        canvas,
+                        state.mosaicBox.x,
+                        state.mosaicBox.y,
+                        state.mosaicBox.width,
+                        state.mosaicBox.height,
+                        state.mosaicIntensity
+                    );
+                }
             }
 
             if (maskImageObj.complete) {
@@ -621,6 +861,42 @@
             ctx.fillText(topText, 500, topTextY);
             
             ctx.restore();
+        }
+
+        function applyMosaic(image, startX, startY, width, height, mosaicIntensity) {
+            const sourceCanvas = image instanceof HTMLCanvasElement ? image : document.createElement('canvas');
+            const ctx = sourceCanvas.getContext('2d');
+
+            if (!(image instanceof HTMLCanvasElement)) {
+                sourceCanvas.width = image.naturalWidth || image.width;
+                sourceCanvas.height = image.naturalHeight || image.height;
+                ctx.drawImage(image, 0, 0);
+            }
+
+            const x = Math.max(0, Math.min(sourceCanvas.width - 1, Math.floor(startX)));
+            const y = Math.max(0, Math.min(sourceCanvas.height - 1, Math.floor(startY)));
+            const mosaicWidth = Math.max(1, Math.min(sourceCanvas.width - x, Math.floor(width)));
+            const mosaicHeight = Math.max(1, Math.min(sourceCanvas.height - y, Math.floor(height)));
+            const blockSize = Math.max(1, Math.floor(mosaicIntensity));
+
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+
+            for (let blockY = y; blockY < y + mosaicHeight; blockY += blockSize) {
+                for (let blockX = x; blockX < x + mosaicWidth; blockX += blockSize) {
+                    const sampleX = Math.min(blockX + Math.floor(blockSize / 2), x + mosaicWidth - 1);
+                    const sampleY = Math.min(blockY + Math.floor(blockSize / 2), y + mosaicHeight - 1);
+                    const [red, green, blue, alpha] = ctx.getImageData(sampleX, sampleY, 1, 1).data;
+                    const drawWidth = Math.min(blockSize, x + mosaicWidth - blockX);
+                    const drawHeight = Math.min(blockSize, y + mosaicHeight - blockY);
+
+                    ctx.fillStyle = `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
+                    ctx.fillRect(blockX, blockY, drawWidth, drawHeight);
+                }
+            }
+
+            ctx.restore();
+            return sourceCanvas;
         }
 
         // 解析並清理 ContentEditable 內容
