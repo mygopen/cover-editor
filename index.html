@@ -591,6 +591,11 @@
         });
 
         inpMosaicPreview.addEventListener('change', renderMosaicPreview);
+        ['mousedown', 'mousemove', 'mouseup', 'touchstart', 'touchmove', 'touchend', 'pointerdown', 'pointermove', 'pointerup'].forEach(eventName => {
+            mosaicDialog.addEventListener(eventName, (e) => {
+                e.stopPropagation();
+            });
+        });
 
         btnMosaicSelect.addEventListener('click', () => {
             if (!state.bgSrc) return;
@@ -700,6 +705,7 @@
 
         function startDrag(e) {
             if (!state.bgSrc) return;
+            if (mosaicDialog.contains(e.target)) return;
             e.preventDefault();
             const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
             const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
