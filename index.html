@@ -93,6 +93,102 @@
             border-radius: 4px;
         }
 
+        #mosaic-dialog {
+            position: absolute;
+            left: 50%;
+            bottom: 18px;
+            z-index: 40;
+            width: min(455px, calc(100% - 24px));
+            transform: translateX(-50%);
+            overflow: hidden;
+            border-radius: 5px;
+            background: #474747;
+            color: #f3f4f6;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+        }
+
+        .mosaic-dialog-titlebar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 30px;
+            padding: 0 10px;
+            background: #343434;
+            font-weight: 700;
+        }
+
+        #btn-mosaic-close {
+            color: #d1d5db;
+            font-size: 22px;
+            line-height: 1;
+        }
+
+        .mosaic-dialog-body {
+            display: grid;
+            grid-template-columns: 1fr 104px;
+            gap: 14px;
+            padding: 14px;
+        }
+
+        .mosaic-cell-row {
+            display: grid;
+            grid-template-columns: auto 104px;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .mosaic-value-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
+            height: 27px;
+            padding: 0 8px;
+            border-radius: 3px;
+            background: #292929;
+        }
+
+        #inp-mosaic-cell-size {
+            width: 54px;
+            border: 0;
+            outline: 0;
+            background: transparent;
+            color: #f9fafb;
+            text-align: right;
+        }
+
+        #inp-mosaic-dialog-slider {
+            width: 100%;
+            accent-color: #8b8b8b;
+        }
+
+        .mosaic-dialog-actions {
+            display: grid;
+            gap: 8px;
+        }
+
+        .mosaic-dialog-actions button {
+            height: 26px;
+            border-radius: 3px;
+            background: #696969;
+            color: #f9fafb;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+        }
+
+        .mosaic-dialog-actions button:hover {
+            background: #747474;
+        }
+
+        .mosaic-preview-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 2px;
+            font-size: 14px;
+        }
+
         /* 文字層 (最上層) */
         #preview-text-layer {
             position: absolute;
@@ -204,6 +300,33 @@
                     <div id="mosaic-selection-layer">
                         <div id="mosaic-selection-box"></div>
                     </div>
+
+                    <div id="mosaic-dialog" class="hidden" role="dialog" aria-labelledby="mosaic-dialog-title">
+                        <div class="mosaic-dialog-titlebar">
+                            <div id="mosaic-dialog-title">Mosaic</div>
+                            <button id="btn-mosaic-close" type="button" aria-label="Close">&times;</button>
+                        </div>
+                        <div class="mosaic-dialog-body">
+                            <div>
+                                <div class="mosaic-cell-row">
+                                    <label for="inp-mosaic-cell-size">Cell Size:</label>
+                                    <div class="mosaic-value-wrap">
+                                        <input id="inp-mosaic-cell-size" type="number" min="2" max="80" value="12">
+                                        <span>px</span>
+                                    </div>
+                                </div>
+                                <input id="inp-mosaic-dialog-slider" type="range" min="2" max="80" value="12">
+                            </div>
+                            <div class="mosaic-dialog-actions">
+                                <button id="btn-mosaic-ok" type="button">OK</button>
+                                <button id="btn-mosaic-reset" type="button">Reset</button>
+                                <label class="mosaic-preview-row">
+                                    <input id="inp-mosaic-preview" type="checkbox" checked>
+                                    Preview
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -262,22 +385,13 @@
             </h3>
 
             <div class="grid grid-cols-1 gap-4">
-                <div>
-                    <label class="control-label flex justify-between">
-                        強度 <span id="val-mosaic-intensity" class="text-gray-400">12px</span>
-                    </label>
-                    <input type="range" id="inp-mosaic-intensity" min="2" max="80" value="12">
-                </div>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-1 gap-3">
                     <button id="btn-mosaic-select" type="button" class="bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-4 rounded shadow-sm transition">
                         選取區域
                     </button>
-                    <button id="btn-mosaic-confirm" type="button" class="hidden bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow-sm transition">
-                        確認並儲存
-                    </button>
                 </div>
                 <button id="btn-mosaic-clear" type="button" class="hidden text-sm text-gray-500 hover:text-gray-800 text-left">
-                    清除馬賽克
+                    清除選取
                 </button>
                 <p id="mosaic-status" class="text-xs text-gray-500">點選「選取區域」後，在圖片上拖曳要馬賽克的位置。</p>
             </div>
@@ -355,11 +469,16 @@
         const inpScale = document.getElementById('inp-scale');
         const inpBright = document.getElementById('inp-brightness');
         const inpSat = document.getElementById('inp-saturation');
-        const inpMosaicIntensity = document.getElementById('inp-mosaic-intensity');
         const btnMosaicSelect = document.getElementById('btn-mosaic-select');
-        const btnMosaicConfirm = document.getElementById('btn-mosaic-confirm');
         const btnMosaicClear = document.getElementById('btn-mosaic-clear');
         const mosaicStatus = document.getElementById('mosaic-status');
+        const mosaicDialog = document.getElementById('mosaic-dialog');
+        const inpMosaicCellSize = document.getElementById('inp-mosaic-cell-size');
+        const inpMosaicDialogSlider = document.getElementById('inp-mosaic-dialog-slider');
+        const inpMosaicPreview = document.getElementById('inp-mosaic-preview');
+        const btnMosaicOk = document.getElementById('btn-mosaic-ok');
+        const btnMosaicReset = document.getElementById('btn-mosaic-reset');
+        const btnMosaicClose = document.getElementById('btn-mosaic-close');
         
         const inpTextY = document.getElementById('inp-text-y');
         const inpTextSize = document.getElementById('inp-text-size');
@@ -426,12 +545,10 @@
             state.scale = parseInt(inpScale.value) / 100;
             state.brightness = parseInt(inpBright.value);
             state.saturation = parseInt(inpSat.value);
-            state.mosaicIntensity = parseInt(inpMosaicIntensity.value);
             
             document.getElementById('val-scale').innerText = inpScale.value + '%';
             document.getElementById('val-brightness').innerText = inpBright.value + '%';
             document.getElementById('val-saturation').innerText = inpSat.value + '%';
-            document.getElementById('val-mosaic-intensity').innerText = state.mosaicIntensity + 'px';
             
             state.textPaddingBottomPx = parseInt(inpTextY.value);
             state.bottomFontSize = parseInt(inpTextSize.value);
@@ -448,7 +565,6 @@
             inpScale,
             inpBright,
             inpSat,
-            inpMosaicIntensity,
             inpTextY,
             inpTextSize,
             inpTopTextSize
@@ -456,33 +572,49 @@
             el.addEventListener('input', updateStateFromInputs);
         });
 
+        [inpMosaicCellSize, inpMosaicDialogSlider].forEach(el => {
+            el.addEventListener('input', (e) => {
+                syncMosaicCellSize(e.target.value);
+                renderMosaicPreview();
+            });
+        });
+
+        inpMosaicPreview.addEventListener('change', renderMosaicPreview);
+
         btnMosaicSelect.addEventListener('click', () => {
             if (!state.bgSrc) return;
             state.isMosaicSelectionMode = true;
             state.pendingMosaicBox = null;
             previewContainer.style.cursor = 'crosshair';
+            hideMosaicDialog();
             updatePreview();
         });
 
-        btnMosaicConfirm.addEventListener('click', async () => {
+        btnMosaicOk.addEventListener('click', async () => {
             if (!state.pendingMosaicBox) return;
-            btnMosaicConfirm.disabled = true;
+            btnMosaicOk.disabled = true;
             const saved = await saveMosaicToBaseImage(state.pendingMosaicBox);
             state.savedMosaicBox = saved ? state.pendingMosaicBox : null;
             state.pendingMosaicBox = null;
             state.isMosaicSelectionMode = false;
-            btnMosaicConfirm.disabled = false;
+            btnMosaicOk.disabled = false;
+            hideMosaicDialog();
             previewContainer.style.cursor = 'default';
             updatePreview();
         });
 
-        btnMosaicClear.addEventListener('click', () => {
+        [btnMosaicReset, btnMosaicClose, btnMosaicClear].forEach(btn => {
+            btn.addEventListener('click', resetMosaicSelection);
+        });
+
+        function resetMosaicSelection() {
             state.pendingMosaicBox = null;
             state.savedMosaicBox = null;
             state.isMosaicSelectionMode = false;
+            hideMosaicDialog();
             previewContainer.style.cursor = 'default';
             updatePreview();
-        });
+        }
 
         // 3. 文字輸入同步
         inpTopText.addEventListener('input', (e) => {
@@ -602,10 +734,15 @@
         }
 
         function endDrag() {
+            const didSelectMosaic = state.isSelectingMosaic;
             state.isDragging = false;
             state.isSelectingMosaic = false;
             previewContainer.style.cursor = state.isMosaicSelectionMode ? 'crosshair' : 'default';
             updatePreview();
+            if (didSelectMosaic && state.pendingMosaicBox) {
+                showMosaicDialog();
+                renderMosaicPreview();
+            }
         }
 
         function getCanvasPoint(clientX, clientY) {
@@ -643,7 +780,7 @@
             const moveDownPx = 5 * scaleRatio;
             displayTop.style.transform = `translateY(${moveDownPx}px)`;
 
-            clearPreviewMosaic();
+            renderMosaicPreview();
             updateMosaicSelectionBox();
             updateMosaicControls();
         }
@@ -676,7 +813,6 @@
         }
 
         function updateMosaicControls() {
-            btnMosaicConfirm.classList.toggle('hidden', !state.pendingMosaicBox);
             btnMosaicClear.classList.toggle('hidden', !state.pendingMosaicBox);
             btnMosaicSelect.disabled = !state.bgSrc;
             btnMosaicSelect.classList.toggle('opacity-50', !state.bgSrc);
@@ -695,7 +831,6 @@
         }
 
         function clearPreviewMosaic() {
-            const rect = previewContainer.getBoundingClientRect();
             const ctx = previewMosaicCanvas.getContext('2d');
             const canvasWidth = 1000;
             const canvasHeight = 563;
@@ -707,6 +842,60 @@
 
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, previewMosaicCanvas.width, previewMosaicCanvas.height);
+        }
+
+        function renderMosaicPreview() {
+            clearPreviewMosaic();
+            if (!state.bgSrc || !state.pendingMosaicBox || !inpMosaicPreview.checked || !bgImgEl.complete) return;
+
+            const imageWidth = bgImgEl.naturalWidth || bgImgEl.width;
+            const imageHeight = bgImgEl.naturalHeight || bgImgEl.height;
+            const imageBox = mapOutputBoxToImageBox(state.pendingMosaicBox, imageWidth, imageHeight);
+            if (!imageBox) return;
+
+            const sourceCanvas = document.createElement('canvas');
+            sourceCanvas.width = imageWidth;
+            sourceCanvas.height = imageHeight;
+            const sourceCtx = sourceCanvas.getContext('2d');
+            sourceCtx.drawImage(bgImgEl, 0, 0, imageWidth, imageHeight);
+            applyMosaic(sourceCanvas, imageBox.x, imageBox.y, imageBox.width, imageBox.height, state.mosaicIntensity);
+
+            const previewCtx = previewMosaicCanvas.getContext('2d');
+            const workingCanvas = document.createElement('canvas');
+            workingCanvas.width = previewMosaicCanvas.width;
+            workingCanvas.height = previewMosaicCanvas.height;
+            const workingCtx = workingCanvas.getContext('2d');
+
+            drawBackgroundOnCanvas(workingCtx, sourceCanvas);
+            previewCtx.drawImage(
+                workingCanvas,
+                state.pendingMosaicBox.x,
+                state.pendingMosaicBox.y,
+                state.pendingMosaicBox.width,
+                state.pendingMosaicBox.height,
+                state.pendingMosaicBox.x,
+                state.pendingMosaicBox.y,
+                state.pendingMosaicBox.width,
+                state.pendingMosaicBox.height
+            );
+        }
+
+        function syncMosaicCellSize(value) {
+            const nextValue = Math.max(2, Math.min(80, parseInt(value) || 12));
+            state.mosaicIntensity = nextValue;
+            inpMosaicCellSize.value = nextValue;
+            inpMosaicDialogSlider.value = nextValue;
+        }
+
+        function showMosaicDialog() {
+            syncMosaicCellSize(state.mosaicIntensity);
+            inpMosaicPreview.checked = true;
+            mosaicDialog.classList.remove('hidden');
+        }
+
+        function hideMosaicDialog() {
+            mosaicDialog.classList.add('hidden');
+            clearPreviewMosaic();
         }
         
         window.addEventListener('resize', updatePreview);
