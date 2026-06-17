@@ -1079,6 +1079,20 @@
             ctx.restore();
         }
 
+        function getPreviewImageMetrics(imageWidth, imageHeight) {
+            const previewToOutput = getPreviewToOutputScale();
+            const rect = bgImgEl.getBoundingClientRect();
+            const unscaledPreviewWidth = bgImgEl.offsetWidth || (rect.width / Math.max(state.scale, 0.01)) || imageWidth;
+            const unscaledPreviewHeight = bgImgEl.offsetHeight || (rect.height / Math.max(state.scale, 0.01)) || imageHeight;
+
+            return {
+                naturalWidth: imageWidth,
+                naturalHeight: imageHeight,
+                outputWidth: unscaledPreviewWidth * previewToOutput.x,
+                outputHeight: unscaledPreviewHeight * previewToOutput.y
+            };
+        }
+
         function getPreviewToOutputScale() {
             const rect = previewContainer.getBoundingClientRect();
             return {
@@ -1088,8 +1102,9 @@
         }
 
         function getImagePlacementOnCanvas(canvas, img) {
-            const imageWidth = img.naturalWidth || img.width;
-            const imageHeight = img.naturalHeight || img.height;
+            const sourceWidth = img.naturalWidth || img.width;
+            const sourceHeight = img.naturalHeight || img.height;
+            const imageMetrics = getPreviewImageMetrics(sourceWidth, sourceHeight);
             const previewToOutput = getPreviewToOutputScale();
             const outputToCanvas = {
                 x: canvas.width / OUTPUT_WIDTH,
@@ -1097,8 +1112,8 @@
             };
 
             return {
-                imageWidth,
-                imageHeight,
+                imageWidth: imageMetrics.outputWidth * outputToCanvas.x,
+                imageHeight: imageMetrics.outputHeight * outputToCanvas.y,
                 scale: state.scale,
                 centerX: (OUTPUT_WIDTH / 2 + state.posX * previewToOutput.x) * outputToCanvas.x,
                 centerY: (OUTPUT_HEIGHT / 2 + state.posY * previewToOutput.y) * outputToCanvas.y
@@ -1135,23 +1150,26 @@
         }
 
         function mapOutputBoxToImageBox(outputBox, imageWidth, imageHeight) {
+            const imageMetrics = getPreviewImageMetrics(imageWidth, imageHeight);
             const previewToOutput = getPreviewToOutputScale();
             const imageCenterX = OUTPUT_WIDTH / 2 + state.posX * previewToOutput.x;
             const imageCenterY = OUTPUT_HEIGHT / 2 + state.posY * previewToOutput.y;
-            const imageLeft = imageCenterX - (imageWidth * state.scale) / 2;
-            const imageTop = imageCenterY - (imageHeight * state.scale) / 2;
+            const displayedWidth = imageMetrics.outputWidth * state.scale;
+            const displayedHeight = imageMetrics.outputHeight * state.scale;
+            const imageLeft = imageCenterX - displayedWidth / 2;
+            const imageTop = imageCenterY - displayedHeight / 2;
 
             const outputLeft = Math.max(outputBox.x, imageLeft);
             const outputTop = Math.max(outputBox.y, imageTop);
-            const outputRight = Math.min(outputBox.x + outputBox.width, imageLeft + imageWidth * state.scale);
-            const outputBottom = Math.min(outputBox.y + outputBox.height, imageTop + imageHeight * state.scale);
+            const outputRight = Math.min(outputBox.x + outputBox.width, imageLeft + displayedWidth);
+            const outputBottom = Math.min(outputBox.y + outputBox.height, imageTop + displayedHeight);
 
             if (outputRight <= outputLeft || outputBottom <= outputTop) return null;
 
-            const sourceX = Math.floor((outputLeft - imageLeft) / state.scale);
-            const sourceY = Math.floor((outputTop - imageTop) / state.scale);
-            const sourceRight = Math.ceil((outputRight - imageLeft) / state.scale);
-            const sourceBottom = Math.ceil((outputBottom - imageTop) / state.scale);
+            const sourceX = Math.floor(((outputLeft - imageLeft) / displayedWidth) * imageWidth);
+            const sourceY = Math.floor(((outputTop - imageTop) / displayedHeight) * imageHeight);
+            const sourceRight = Math.ceil(((outputRight - imageLeft) / displayedWidth) * imageWidth);
+            const sourceBottom = Math.ceil(((outputBottom - imageTop) / displayedHeight) * imageHeight);
             const clampedX = Math.max(0, Math.min(imageWidth - 1, sourceX));
             const clampedY = Math.max(0, Math.min(imageHeight - 1, sourceY));
             const clampedRight = Math.max(clampedX + 1, Math.min(imageWidth, sourceRight));
@@ -1166,7 +1184,16 @@
         }
 
         function getSourceMosaicCellSize() {
-            return Math.max(1, Math.round(state.mosaicIntensity / Math.max(state.scale, 0.01)));
+            const imageWidth = bgImgEl.naturalWidth || bgImgEl.width;
+            const imageHeight = bgImgEl.naturalHeight || bgImgEl.height;
+            const imageMetrics = getPreviewImageMetrics(imageWidth, imageHeight);
+            const displayedWidth = imageMetrics.outputWidth * Math.max(state.scale, 0.01);
+
+            if (!displayedWidth || !imageMetrics.naturalWidth) {
+                return Math.max(1, Math.round(state.mosaicIntensity));
+            }
+
+            return Math.max(1, Math.round(state.mosaicIntensity * (imageMetrics.naturalWidth / displayedWidth)));
         }
 
         function applyMosaic(image, startX, startY, width, height, mosaicIntensity) {
